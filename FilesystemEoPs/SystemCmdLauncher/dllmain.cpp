@@ -2,33 +2,34 @@
 
 #include "pch.h"
 
-#include <memory>
-
 void DoIt()
 {
     HANDLE hToken = GetCurrentProcessToken();
     DWORD infoSize;
     GetTokenInformation(hToken, TokenUser, NULL, 0, &infoSize);
-    auto buffer = std::make_unique<char[]>(infoSize);
-    if (!GetTokenInformation(hToken, TokenUser, buffer.get(), infoSize, &infoSize))
+    char* buffer = (char*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, infoSize);
+    if (!GetTokenInformation(hToken, TokenUser, buffer, infoSize, &infoSize))
     {
+        HeapFree(GetProcessHeap(), 0, buffer);
         return;
     }
-    _TOKEN_USER* tokenUser = (_TOKEN_USER*)buffer.get();
+    _TOKEN_USER* tokenUser = (_TOKEN_USER*)buffer;
     if (!IsWellKnownSid(tokenUser->User.Sid, WinLocalSystemSid))
     {
+        HeapFree(GetProcessHeap(), 0, buffer);
         return;
     }
+    HeapFree(GetProcessHeap(), 0, buffer);
 
-    STARTUPINFO startupInfo;
-    memset(&startupInfo, 0, sizeof(startupInfo));
-    PROCESS_INFORMATION processInfo;
-    memset(&processInfo, 0, sizeof(processInfo));
+    STARTUPINFO startupInfo = {};
+    PROCESS_INFORMATION processInfo = {};
     wchar_t commandLine[] = L"cmd.exe";
-    if (!CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &startupInfo, &processInfo))
-    {
-        return;
-    }
+    CreateProcess(NULL, commandLine, NULL, NULL, FALSE, 0, NULL, NULL, &startupInfo, &processInfo);
+}
+
+extern "C" __declspec(dllexport) void CALLBACK Test(HWND, HINSTANCE, LPSTR, int)
+{
+    DoIt();
 }
 
 BOOL APIENTRY DllMain( HMODULE hModule,

